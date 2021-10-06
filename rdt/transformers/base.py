@@ -1,6 +1,7 @@
 """BaseTransformer module."""
 import abc
 
+import numpy as np
 import pandas as pd
 
 
@@ -22,6 +23,7 @@ class BaseTransformer:
     columns = None
     column_prefix = None
     output_columns = None
+    input_format = None
 
     @classmethod
     def get_subclasses(cls):
@@ -105,7 +107,31 @@ class BaseTransformer:
         """
         return self._add_prefix(self.NEXT_TRANSFORMERS)
 
-    def _store_columns(self, columns, data):
+    def _reformat_input(self, data, columns):
+        if isinstance(data, pd.DataFrame):
+            self.input_format = 'dataframe'
+            if columns is None:
+                return data, list(data.columns)
+
+            return data, columns
+
+        if isinstance(data, pd.Series):
+            self.input_format = 'series'
+            return pd.DataFrame(data), data.name
+        if isinstance(data, np.ndarray):
+            if len(data.shape) == 1:
+                columns = columns or self.columns or [0]
+                self.input_format = '1dnumpy'
+            else:
+                columns = columns or self.columns or list(range(data.shape[0]))
+                self.input_format = '2dnumpy'
+
+            data = pd.DataFrame(data, columns=columns)
+            return data, columns
+
+        raise TypeError(f'Invalid data type: {type(data)}')
+
+    def _store_columns(self, data, columns):
         if isinstance(columns, tuple) and columns not in data:
             columns = list(columns)
         elif not isinstance(columns, list):
@@ -135,7 +161,7 @@ class BaseTransformer:
             data[columns] = columns_data
 
     def _build_output_columns(self, data):
-        self.column_prefix = '#'.join(self.columns)
+        self.column_prefix = '#'.join(str(column) for column in self.columns)
         self.output_columns = list(self.get_output_types().keys())
 
         # make sure none of the generated `output_columns` exists in the data
@@ -153,7 +179,7 @@ class BaseTransformer:
         """
         raise NotImplementedError()
 
-    def fit(self, data, columns):
+    def fit(self, data, columns=None):
         """Fit the transformer to the `columns` of the `data`.
 
         Args:
@@ -162,7 +188,8 @@ class BaseTransformer:
             columns (list):
                 Column names. Must be present in the data.
         """
-        self._store_columns(columns, data)
+        data, columns = self._reformat_input(data, columns)
+        self._store_columns(data, columns)
 
         columns_data = self._get_columns_data(data, self.columns)
         self._fit(columns_data)
@@ -195,6 +222,7 @@ class BaseTransformer:
             pd.DataFrame:
                 The entire table, containing the transformed data.
         """
+        data, _ = self._reformat_input(data, None)
         # if `data` doesn't have the columns that were fitted on, don't transform
         if any(column not in data.columns for column in self.columns):
             return data
@@ -210,7 +238,7 @@ class BaseTransformer:
 
         return data
 
-    def fit_transform(self, data, columns):
+    def fit_transform(self, data, columns=None):
         """Fit the transformer to the `columns` of the `data` and then transform them.
 
         Args:
@@ -266,5 +294,12 @@ class BaseTransformer:
         self._set_columns_data(data, reversed_data, self.columns)
         if drop:
             data = data.drop(self.output_columns, axis=1)
+
+        if self.input_format == 'series':
+            return data[self.columns[0]]
+        if self.input_format == '1dnumpy':
+            return data[self.columns[0]].to_numpy()
+        if self.input_format == '2dnumpy':
+            return data.to_numpy()
 
         return data

@@ -213,3 +213,161 @@ def test_dummy_transformer_multi_column_input():
     })
     pd.testing.assert_frame_equal(expected_transform, transformed)
     pd.testing.assert_frame_equal(reverse, data)
+
+
+def test_dummy_transformer_series_input():
+    """Test a transformer that is passed a Series on fit.
+
+    """
+
+    # Setup
+    class DummyTransformer(BaseTransformer):
+
+        INPUT_TYPE = 'boolean'
+        OUTPUT_TYPES = {
+            'value': 'float'
+        }
+
+        def _fit(self, data):
+            pass
+
+        def _transform(self, data):
+            return data.astype(np.float)
+
+        def _reverse_transform(self, data):
+            return data.round() != 0
+
+    # Run
+    data = pd.Series([True, False, True, False], name='bool')
+
+    transformer = DummyTransformer()
+    transformed = transformer.fit_transform(data)
+
+    reverse = transformer.reverse_transform(transformed)
+
+    # Assert
+    expected_transform = pd.DataFrame({
+        'bool.value': [1., 0., 1., 0.]
+    })
+    pd.testing.assert_frame_equal(expected_transform, transformed)
+    pd.testing.assert_series_equal(reverse, data)
+
+
+def test_dummy_transformer_1dnumpy_input():
+    """Test a transformer that is passed a 1d numpy array on fit.
+
+    """
+
+    # Setup
+    class DummyTransformer(BaseTransformer):
+
+        INPUT_TYPE = 'boolean'
+        OUTPUT_TYPES = {
+            'value': 'float'
+        }
+
+        def _fit(self, data):
+            pass
+
+        def _transform(self, data):
+            return data.astype(np.float)
+
+        def _reverse_transform(self, data):
+            return data.round() != 0
+
+    # Run
+    data = np.array([True, False, True, False])
+
+    transformer = DummyTransformer()
+    transformed = transformer.fit_transform(data)
+
+    reverse = transformer.reverse_transform(transformed)
+
+    # Assert
+    expected_transform = pd.DataFrame({
+        '0.value': [1., 0., 1., 0.]
+    })
+    pd.testing.assert_frame_equal(expected_transform, transformed)
+    np.testing.assert_equal(reverse, data)
+
+
+def test_dummy_transformer_2dnumpy_input():
+    """Test a transformer that inputs a DataFrame.
+
+    This validates that a Transformer that is implemented to
+    expect multiple columns as the input for the `_transform`
+    method works as expected.
+
+    Setup:
+        - A DummyTransformer that implements a _transform
+          that expects a DataFrame with multiple columns as
+          input, and a reverse transform that produces the
+          same set of columns.
+
+    Input:
+        - A DataFrame with three year, month and day columns that
+          represent dates.
+
+    Expected behavior:
+        - The data should be transformed into a DataFrame that contains
+          a single float column with the timestamp values of the inputed
+          datetimes.
+        - The data should be able to be transformed and reverse
+          transformed to re-produce the input data.
+    """
+
+    # Setup
+    class DummyTransformer(BaseTransformer):
+
+        INPUT_TYPE = 'datetime'
+        OUTPUT_TYPES = {
+            'value': 'float',
+        }
+
+        def _fit(self, data):
+            pass
+
+        def _transform(self, data):
+            # Convert multiple columns into a single datetime
+            data.columns = ['year', 'month', 'day']
+            datetimes = pd.to_datetime(data)
+
+            outdata = dict(zip(
+                self.output_columns,
+                [
+                    datetimes.values.astype(np.float64),
+                    datetimes.isnull().astype(np.float64)
+                ]
+            ))
+            out = pd.DataFrame(outdata).fillna(-1)
+
+            return out
+
+        def _reverse_transform(self, data):
+            datetimes = data.round().astype('datetime64[ns]')
+            out = pd.DataFrame({
+                'year': datetimes.dt.year,
+                'month': datetimes.dt.month,
+                'day': datetimes.dt.day,
+            })
+
+            return out
+
+    # Run
+    data = pd.DataFrame({
+        'year': [2001, 2002, 2003],
+        'month': [1, 2, 3],
+        'day': [1, 2, 3],
+    }).to_numpy()
+
+    transformer = DummyTransformer()
+    transformed = transformer.fit_transform(data)
+
+    reverse = transformer.reverse_transform(transformed)
+
+    # Assert
+    expected_transform = pd.DataFrame({
+        '0#1#2.value': [9.783072e+17, 1.012608e+18, 1.046650e+18]
+    })
+    pd.testing.assert_frame_equal(expected_transform, transformed)
+    np.testing.assert_equal(reverse, data)
