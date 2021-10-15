@@ -335,8 +335,8 @@ def test_dummy_transformer_2dnumpy_input():
             outdata = dict(zip(
                 self.output_columns,
                 [
-                    datetimes.values.astype(np.float64),
-                    datetimes.isnull().astype(np.float64)
+                    datetimes.to_array().astype(np.float64),
+                    datetimes.isna().astype(np.float64)
                 ]
             ))
             out = pd.DataFrame(outdata).fillna(-1)
