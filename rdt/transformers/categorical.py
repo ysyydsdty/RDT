@@ -104,8 +104,6 @@ class CategoricalTransformer(BaseTransformer):
             end = start + prob
             mean = start + prob / 2
             std = prob / 6
-            if pd.isna(value):
-                value = np.nan
 
             intervals[value] = (start, end, mean, std)
             means.append(mean)
